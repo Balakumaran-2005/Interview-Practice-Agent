@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>AI Interview Practice Agent</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Face detection via face-api.js (CDN) -->
+    <script defer src="https://unpkg.com/face-api.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #0f172a;
+            color: #e5e7eb;
+            display: flex;
+            height: 100vh;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1.2fr 1.8fr;
+            gap: 16px;
+            padding: 16px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .card {
+            overflow: hidden;
+        }
+
+/* Allow only the right side to scroll */
+        .card:nth-child(2) {
+            overflow-y: auto;
+        }
+        .card {
+            background: #020617;
+            border-radius: 16px;
+            padding: 16px;
+            box-shadow: 0 0 0 1px #1f2937;
+            display: flex;
+            flex-direction: column;
+        }
+
+        h1,
+        h2 {
+            margin: 0 0 8px;
+            font-weight: 600;
+        }
+
+        .subtitle {
+            font-size: 0.9rem;
+            color: #9ca3af;
+            margin-bottom: 8px;
+        }
+
+        .video-wrapper {
+            position: relative;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #1f2937;
+            background: #020617;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #overlayCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .warning {
+            margin-top: 8px;
+            font-size: 0.85rem;
+            padding: 6px 8px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .warning.red {
+            background: rgba(239, 68, 68, 0.15);
+            color: #fecaca;
+            border: 1px solid rgba(239, 68, 68, 0.5);
+        }
+
+        .warning.green {
+            background: rgba(22, 163, 74, 0.15);
+            color: #bbf7d0;
+            border: 1px solid rgba(22, 163, 74, 0.5);
+        }
+
+        .controls {
+            margin-top: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+
+        button {
+            border: none;
+            border-radius: 999px;
+            padding: 8px 16px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            background: #2563eb;
+            color: white;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        button.secondary {
+            background: #111827;
+            color: #e5e7eb;
+            border: 1px solid #374151;
+        }
+
+        button.danger {
+            background: #dc2626;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        select,
+        input[type="number"],
+        textarea {
+            background: #020617;
+            border-radius: 999px;
+            border: 1px solid #374151;
+            color: #e5e7eb;
+            padding: 6px 10px;
+            font-size: 0.9rem;
+            outline: none;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 60px;
+            resize: vertical;
+            border-radius: 12px;
+        }
+
+        .chat-box {
+            flex: 1;
+            border-radius: 12px;
+            padding: 8px;
+            background: #020617;
+            border: 1px solid #1f2937;
+            overflow-y: auto;
+            font-size: 0.9rem;
+        }
+
+        .message {
+            margin-bottom: 8px;
+            padding: 8px 10px;
+            border-radius: 10px;
+            max-width: 90%;
+            line-height: 1.3;
+        }
+
+        .message.assistant {
+            background: #111827;
+            align-self: flex-start;
+        }
+
+        .message.user {
+            background: #1d4ed8;
+            align-self: flex-end;
+            margin-left: auto;
+        }
+
+        .feedback-box {
+            white-space: pre-wrap;
+            font-size: 0.9rem;
+            line-height: 1.35;
+            padding: 8px;
+            border-radius: 12px;
+            background: #020617;
+            border: 1px solid #1f2937;
+            max-height: 40vh;
+            overflow-y: auto;
+        }
+
+        .status {
+            font-size: 0.85rem;
+            color: #9ca3af;
+            margin-top: 6px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- LEFT: Camera + Voice -->
+        <div class="card">
+            <h1>AI Interview - Camera & Voice</h1>
+            <div class="subtitle">
+                Your face must be alone in the frame. Speak your answers, the agent will listen & respond.
+            </div>
+
+            <div class="video-wrapper">
+                <video id="video" autoplay muted playsinline></video>
+                <canvas id="overlayCanvas"></canvas>
+            </div>
+
+            <div id="faceWarning" class="warning red" style="display:none;">
+                ⚠ Multiple faces or no face detected. Please sit alone in front of the camera.
+            </div>
+            <div id="faceOk" class="warning green" style="display:none;">
+                ✅ Face detected correctly. You can continue the interview.
+            </div>
+
+            <div class="controls">
+                <button id="initCameraBtn">Enable Camera</button>
+                <button id="startInterviewBtn">Start Interview</button>
+                <button id="startVoiceBtn" class="secondary" disabled>🎤 Speak Answer</button>
+                <button id="stopVoiceBtn" class="danger" disabled>⏹ Stop Voice</button>
+                <button id="stopInterviewBtn" class="danger">⛔ Stop Interview</button>
+            </div>
+
+            <div class="controls" style="margin-top:10px;">
+                <label style="font-size:0.85rem;">Role:</label>
+                <input id="roleInput" type="text" placeholder="Enter role (e.g., Backend Engineer)" style="width: 250px;" />
+
+
+                <label style="font-size:0.85rem;">Questions:</label>
+                <input type="number" id="maxQuestions" min="3" max="10" value="5" />
+            </div>
+
+            <div class="status" id="statusText">
+                Status: Idle
+            </div>
+        </div>
+
+        <!-- RIGHT: Chat + Transcript + Feedback -->
+        <div class="card">
+            <h2>Interview Conversation</h2>
+            <div class="subtitle">
+                The agent will ask questions here. Your spoken answers will appear as text.
+            </div>
+
+            <div id="chatBox" class="chat-box"></div>
+
+            <div style="margin-top:10px;">
+                <label style="font-size:0.85rem;">Last recognized answer (you can edit before sending if
+                    needed):</label>
+                <textarea id="answerText" placeholder="Your speech-to-text answer will appear here..."></textarea>
+            </div>
+
+            <div class="controls">
+                <button id="sendAnswerBtn" class="secondary" disabled>Send Answer</button>
+                <button id="getFeedbackBtn" disabled>Get Feedback</button>
+            </div>
+
+            <h2 style="margin-top:16px;">Feedback</h2>
+            <div id="feedbackBox" class="feedback-box">
+                Feedback will appear here after the interview is finished.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==============================
+        // CONFIG
+        // ==============================
+        const API_BASE = "http://localhost:8000";
+
+        // ==============================
+            // SILENCE DETECTION
+            // ==============================
+        let silenceTimer = null;
+        let SILENCE_LIMIT = 30000; // 15 seconds of silence
+        let lastBotQuestion = null;
+
+        let sessionId = null;
+        let interviewFinished = false;
+
+        let recognition = null;
+        let recognizing = false;
+        let finalTranscript = ""; // ✅ accumulate full answer across pauses
+
+        let video = document.getElementById("video");
+        let overlayCanvas = document.getElementById("overlayCanvas");
+        let faceWarning = document.getElementById("faceWarning");
+        let faceOk = document.getElementById("faceOk");
+
+        const initCameraBtn = document.getElementById("initCameraBtn");
+        const startInterviewBtn = document.getElementById("startInterviewBtn");
+        const startVoiceBtn = document.getElementById("startVoiceBtn");
+        const stopVoiceBtn = document.getElementById("stopVoiceBtn");
+        const sendAnswerBtn = document.getElementById("sendAnswerBtn");
+        const getFeedbackBtn = document.getElementById("getFeedbackBtn");
+        const roleSelect = document.getElementById("roleSelect");
+        const maxQuestionsInput = document.getElementById("maxQuestions");
+        const answerText = document.getElementById("answerText");
+        const feedbackBox = document.getElementById("feedbackBox");
+        const chatBox = document.getElementById("chatBox");
+        const statusText = document.getElementById("statusText");
+
+        // ==============================
+        // UTIL: Chat UI
+        // ==============================
+        function addMessage(role, text) {
+            const msg = document.createElement("div");
+            msg.className = "message " + role;
+            msg.textContent = text;
+            chatBox.appendChild(msg);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function setStatus(text) {
+            statusText.textContent = "Status: " + text;
+        }
+
+        function speakText(text) {
+            if (!window.speechSynthesis) return;
+            const utter = new SpeechSynthesisUtterance(text);
+            utter.rate = 1.0;
+            window.speechSynthesis.speak(utter);
+        }
+
+        // ==============================
+        // CAMERA + FACE DETECTION
+        // ==============================
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                video.srcObject = stream;
+
+                video.onloadedmetadata = () => {
+                    video.play();
+                };
+
+                setStatus("Camera enabled. Loading face detection models...");
+
+                // Load face-api models from CDN paths
+                await faceapi.nets.tinyFaceDetector.loadFromUri("https://unpkg.com/face-api.js/weights");
+                setStatus("Face detection model loaded. Monitoring faces...");
+                startFaceDetection();
+            } catch (err) {
+                console.error("Error accessing camera:", err);
+                setStatus("Error: Unable to access camera");
+            }
+        }
+
+        async function startFaceDetection() {
+            const displaySize = { width: video.videoWidth, height: video.videoHeight };
+            overlayCanvas.width = displaySize.width;
+            overlayCanvas.height = displaySize.height;
+
+            const ctx = overlayCanvas.getContext("2d");
+
+            async function detect() {
+                if (video.readyState === 4) {
+                    const detections = await faceapi.detectAllFaces(
+                        video,
+                        new faceapi.TinyFaceDetectorOptions()
+                    );
+
+                    ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+                    faceWarning.style.display = "none";
+                    faceOk.style.display = "none";
+
+                    if (detections.length === 1) {
+                        const box = detections[0].box;
+                        ctx.strokeStyle = "#22c55e";
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(box.x, box.y, box.width, box.height);
+                        faceOk.style.display = "inline-flex";
+                    } else {
+                        if (detections.length === 0) {
+                            faceWarning.textContent = "⚠ No face detected. Please stay in front of the camera.";
+                        } else {
+                            faceWarning.textContent = "⚠ Multiple faces detected. Please sit alone in the frame.";
+                        }
+                        faceWarning.style.display = "inline-flex";
+                    }
+                }
+
+                requestAnimationFrame(detect);
+            }
+
+            detect();
+        }
+
+        // ==============================
+        // VOICE (Speech-to-Text) – ACCUMULATING VERSION
+        // ==============================
+        function initSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                alert("Speech Recognition API not supported in this browser. Use Chrome or Edge.");
+                return null;
+            }
+
+            const recog = new SpeechRecognition();
+            recog.lang = "en-US";
+            recog.interimResults = true;
+            recog.continuous = true;
+
+            recog.onstart = () => {
+                recognizing = true;
+                finalTranscript = "";         // ✅ reset for this answer
+                answerText.value = "";        // optional: clear box
+                setStatus("Listening... speak your answer (pauses are okay)");
+            };
+
+            recog.onend = () => {
+                recognizing = false;
+                setStatus("Stopped listening");
+                startVoiceBtn.disabled = false;
+                stopVoiceBtn.disabled = true;
+            };
+
+            recog.onresult = (event) => {
+                let interim = "";
+
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        // ✅ lock in completed chunk
+                        finalTranscript += transcript + " ";
+                    } else {
+                        // ✅ current live chunk
+                        interim += transcript;
+                    }
+                }
+
+                // ✅ total = all final chunks + current interim
+                answerText.value = (finalTranscript + " " + interim).trim();
+                restartSilenceTimer();
+
+            };
+
+            recog.onerror = (event) => {
+                console.error("Speech recognition error:", event.error);
+                setStatus("Speech recognition error: " + event.error);
+            };
+
+            return recog;
+        }
+
+        function startVoice() {
+            if (!recognition) {
+                recognition = initSpeechRecognition();
+                if (!recognition) return;
+            }
+            if (!recognizing) {
+                recognition.start();
+                recognizing = true;
+                startVoiceBtn.disabled = true;
+                stopVoiceBtn.disabled = false;
+            }
+        }
+
+        function stopVoice() {
+            if (recognition && recognizing) {
+                recognition.stop();
+                recognizing = false;
+                startVoiceBtn.disabled = false;
+                stopVoiceBtn.disabled = true;
+            }
+        }
+
+        function restartSilenceTimer() {
+                if (silenceTimer) {
+                    clearTimeout(silenceTimer);
+                }
+                silenceTimer = setTimeout(() => {
+                    handleSilence();
+                }, SILENCE_LIMIT);
+            }
+
+        function handleSilence() {
+                if (interviewFinished) return;
+
+                // Message 1 — friendly nudge
+                const msg1 = "Are you still there?";
+                addMessage("assistant", msg1);
+                speakText(msg1);
+
+                // Message 2 — small delay before repeat header
+                setTimeout(() => {
+                    const msg2 = "Let me repeat the question:";
+                    addMessage("assistant", msg2);
+                    speakText(msg2);
+                }, 10000);
+
+                // Message 3 — repeat actual question
+                setTimeout(() => {
+                    if (lastBotQuestion) {
+                        addMessage("assistant", lastBotQuestion);
+                        speakText(lastBotQuestion);
+                    }
+                    // restart timer after repeating
+                    restartSilenceTimer();
+                }, 13000);
+            }
+
+
+
+        // ==============================
+        // API Calls
+        // ==============================
+        async function startInterview() {
+            const role = document.getElementById("roleInput").value.trim();
+            if (!role) {
+                alert("Please enter a role before starting the interview.");
+                return;
+            }
+
+            const maxQuestions = parseInt(maxQuestionsInput.value || "5", 10);
+
+            setStatus("Starting interview...");
+            chatBox.innerHTML = "";
+            feedbackBox.textContent = "Feedback will appear here after the interview.";
+
+            try {
+                const res = await fetch(`${API_BASE}/start`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        role,
+                        max_questions: maxQuestions
+                    }),
+                });
+
+                if (!res.ok) {
+                    throw new Error("Failed to start interview");
+                }
+
+                const data = await res.json();
+                sessionId = data.session_id;
+                interviewFinished = false;
+
+                addMessage("assistant", data.first_question);
+                speakText(data.first_question);
+                lastBotQuestion = data.first_question;
+                restartSilenceTimer();
+
+                sendAnswerBtn.disabled = false;
+                startVoiceBtn.disabled = false;
+                getFeedbackBtn.disabled = true;
+
+                setStatus("Interview running");
+            } catch (err) {
+                console.error(err);
+                setStatus("Error starting interview");
+            }
+        }
+
+        async function sendAnswer() {
+            if (!sessionId) {
+                alert("Start the interview first.");
+                return;
+            }
+            const answer = answerText.value.trim();
+            if (!answer) {
+                alert("Answer is empty.");
+                return;
+            }
+
+            addMessage("user", answer);
+            restartSilenceTimer();
+            answerText.value = "";
+            setStatus("Sending answer...");
+
+            try {
+                const res = await fetch(`${API_BASE}/answer`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        answer: answer
+                    }),
+                });
+
+                if (!res.ok) {
+                    throw new Error("Failed to send answer");
+                }
+
+                const data = await res.json();
+                const { next_message, finished } = data;
+
+                interviewFinished = finished;
+
+                if (next_message) {
+                    addMessage("assistant", next_message);
+                    speakText(next_message);
+                    lastBotQuestion = next_message;
+                    restartSilenceTimer();
+                } else if (finished) {
+                    addMessage("assistant", "The interview is complete. You can now get your feedback.");
+                }
+
+                if (finished) {
+                    sendAnswerBtn.disabled = true;
+                    startVoiceBtn.disabled = true;
+                    stopVoiceBtn.disabled = true;
+                    getFeedbackBtn.disabled = false;
+                    setStatus("Interview finished. Get feedback.");
+                } else {
+                    setStatus("Waiting for your next answer.");
+                }
+            } catch (err) {
+                console.error(err);
+                setStatus("Error sending answer");
+            }
+        }
+
+        async function getFeedback() {
+            if (!sessionId) {
+                alert("No active session.");
+                return;
+            }
+
+            setStatus("Fetching feedback...");
+
+            try {
+                const res = await fetch(`${API_BASE}/feedback`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ session_id: sessionId }),
+                });
+
+                if (!res.ok) {
+                    throw new Error("Failed to get feedback");
+                }
+
+                const data = await res.json();
+                feedbackBox.textContent = data.feedback;
+                speakText("Here is your interview feedback.");
+                setStatus("Feedback displayed.");
+            } catch (err) {
+                console.error(err);
+                setStatus("Error getting feedback");
+            }
+        }
+
+        const stopInterviewBtn = document.getElementById("stopInterviewBtn");
+
+        stopInterviewBtn.addEventListener("click", () => {
+            if (!sessionId) return;
+
+                interviewFinished = true;
+
+                // Stop speech recognition if running
+                if (recognition && recognizing) {
+                    recognition.stop();
+                    recognizing = false;
+                }
+
+                // Disable all interactive buttons
+                sendAnswerBtn.disabled = true;
+                startVoiceBtn.disabled = true;
+                stopVoiceBtn.disabled = true;
+
+                // Enable feedback button
+                getFeedbackBtn.disabled = false;
+
+                addMessage("assistant", "The interview has been stopped. You can now view your feedback.");
+
+                setStatus("Interview stopped by user");
+            });
+
+
+        // ==============================
+        // Event Listeners
+        // ==============================
+        initCameraBtn.addEventListener("click", initCamera);
+        startInterviewBtn.addEventListener("click", startInterview);
+        startVoiceBtn.addEventListener("click", startVoice);
+        stopVoiceBtn.addEventListener("click", stopVoice);
+        sendAnswerBtn.addEventListener("click", sendAnswer);
+        getFeedbackBtn.addEventListener("click", getFeedback);
+    </script>
+</body>
+
+</html>
