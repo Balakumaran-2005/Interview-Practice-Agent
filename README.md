@@ -24,8 +24,8 @@ Built using **FastAPI (backend)** + **Vanilla JS/HTML/CSS (frontend)** + **Groq 
 ### **1. Clone the Repository**
 
 ```bash
-git clone <your_repo_url>
-cd interview-agent
+git clone https://github.com/Balakumaran-2005/Interview-Practice-Agent
+cd Interview-Practice-Agent
 ```
 
 ### **2. Create a Virtual Environment**
